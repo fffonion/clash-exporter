@@ -32,7 +32,8 @@ type geoSiteMatcherImpl struct {
 }
 
 func newGeoSiteMatcher() *geoSiteMatcherImpl {
-	resp, err := http.Get("https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat")
+	// Use MetaCubeX geosite.dat - updated daily with company/organization names
+	resp, err := http.Get("https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat")
 	if err != nil {
 		log.Println("failed to download geosite.dat:", err)
 		return nil
@@ -57,6 +58,9 @@ func newGeoSiteMatcher() *geoSiteMatcherImpl {
 	}
 	for _, site := range list {
 		code := site.GetCountryCode()
+		if !isSpecificGeoSite(code) {
+			continue
+		}
 		for _, domain := range site.GetDomain() {
 			switch domain.GetType() {
 			case v2raygeo.Domain_Full:
@@ -76,27 +80,53 @@ func getGeoSiteMatcher() *geoSiteMatcherImpl {
 	return geoSiteMatcher
 }
 
-func lookupGeoSite(host string) string {
-	m := getGeoSiteMatcher()
-	if m == nil {
-		return ""
+func isSpecificGeoSite(code string) bool {
+	code = strings.ToUpper(code)
+	if code == "" {
+		return false
 	}
+	if code == "CN" || code == "!CN" || code == "PRIVATE" {
+		return false
+	}
+	for _, prefix := range []string{
+		"CATEGORY-",
+		"GEOLOCATION-",
+		"GEOSITE-",
+		"TLD-",
+		"GEOIP-",
+	} {
+		if strings.HasPrefix(code, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *geoSiteMatcherImpl) lookup(host string) string {
 	host = strings.ToLower(host)
-	if code, ok := m.full[host]; ok {
-		return code
+	if code, ok := m.full[host]; ok && isSpecificGeoSite(code) {
+		return strings.ToLower(code)
 	}
 	s := host
 	for {
+		if code, ok := m.suffix[s]; ok && isSpecificGeoSite(code) {
+			return strings.ToLower(code)
+		}
 		i := strings.IndexByte(s, '.')
 		if i < 0 || i+1 >= len(s) {
 			break
 		}
 		s = s[i+1:]
-		if code, ok := m.suffix[s]; ok {
-			return code
-		}
 	}
 	return ""
+}
+
+func lookupGeoSite(host string) string {
+	m := getGeoSiteMatcher()
+	if m == nil {
+		return ""
+	}
+	return m.lookup(host)
 }
 
 type destConnectionMessage struct {
@@ -151,16 +181,15 @@ func (d *Destination) Collect(config CollectConfig) error {
 				destination = ""
 			}
 
-			geositeLabel := ""
 			if destination != "" {
-				geositeLabel = lookupGeoSite(destination)
-				if geositeLabel == "" {
-					geositeLabel = "unknown"
+				geosite := lookupGeoSite(destination)
+				if geosite != "" {
+					destination = geosite
 				}
 			}
 
-			destinationDownloadBytesTotal.WithLabelValues(destination, geositeLabel).Add(float64(connection.Download) - float64(d.connectionCache[connection.ID].Download))
-			destinationUploadBytesTotal.WithLabelValues(destination, geositeLabel).Add(float64(connection.Upload) - float64(d.connectionCache[connection.ID].Upload))
+			destinationDownloadBytesTotal.WithLabelValues(destination).Add(float64(connection.Download) - float64(d.connectionCache[connection.ID].Download))
+			destinationUploadBytesTotal.WithLabelValues(destination).Add(float64(connection.Upload) - float64(d.connectionCache[connection.ID].Upload))
 			d.connectionCache[connection.ID] = connection
 			activeConnectionsMap[connection.ID] = nil
 		}
@@ -179,7 +208,7 @@ func init() {
 			Name:      "destination_download_bytes_total",
 			Help:      "Total download bytes by destination",
 		},
-		[]string{"destination", "geosite"},
+		[]string{"destination"},
 	)
 	destinationUploadBytesTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -187,7 +216,7 @@ func init() {
 			Name:      "destination_upload_bytes_total",
 			Help:      "Total upload bytes by destination",
 		},
-		[]string{"destination", "geosite"},
+		[]string{"destination"},
 	)
 
 	prometheus.MustRegister(destinationDownloadBytesTotal, destinationUploadBytesTotal)
