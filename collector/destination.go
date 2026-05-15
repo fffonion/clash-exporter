@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 
@@ -31,16 +32,22 @@ type geoSiteMatcherImpl struct {
 	suffix map[string]string
 }
 
-func newGeoSiteMatcher() *geoSiteMatcherImpl {
+func loadGeoSiteData(geoSitePath string) ([]byte, error) {
+	if geoSitePath != "" {
+		return os.ReadFile(geoSitePath)
+	}
+
 	// Use MetaCubeX geosite.dat - updated daily with company/organization names
 	resp, err := http.Get("https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat")
 	if err != nil {
-		log.Println("failed to download geosite.dat:", err)
-		return nil
+		return nil, err
 	}
 	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
+}
 
-	data, err := io.ReadAll(resp.Body)
+func newGeoSiteMatcher(geoSitePath string) *geoSiteMatcherImpl {
+	data, err := loadGeoSiteData(geoSitePath)
 	if err != nil {
 		log.Println("failed to read geosite.dat:", err)
 		return nil
@@ -73,9 +80,9 @@ func newGeoSiteMatcher() *geoSiteMatcherImpl {
 	return m
 }
 
-func getGeoSiteMatcher() *geoSiteMatcherImpl {
+func getGeoSiteMatcher(geoSitePath string) *geoSiteMatcherImpl {
 	geoSiteMatcherOnce.Do(func() {
-		geoSiteMatcher = newGeoSiteMatcher()
+		geoSiteMatcher = newGeoSiteMatcher(geoSitePath)
 	})
 	return geoSiteMatcher
 }
@@ -122,7 +129,7 @@ func (m *geoSiteMatcherImpl) lookup(host string) string {
 }
 
 func lookupGeoSite(host string) string {
-	m := getGeoSiteMatcher()
+	m := getGeoSiteMatcher("")
 	if m == nil {
 		return ""
 	}
@@ -233,7 +240,7 @@ func (d *Destination) Collect(config CollectConfig) error {
 			return errors.Wrap(err, "failed to read JSON message")
 		}
 
-		matcher := getGeoSiteMatcher()
+		matcher := getGeoSiteMatcher(config.GeoSitePath)
 		activeConnectionsMap := make(map[string]interface{})
 		for _, connection := range m.Connections {
 			if _, ok := d.connectionCache[connection.ID]; !ok {

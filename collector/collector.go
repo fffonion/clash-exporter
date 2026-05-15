@@ -15,6 +15,7 @@ type CollectConfig struct {
 	CollectTracing bool
 	ClashHost      string
 	ClashToken     string
+	GeoSitePath    string
 }
 
 var collectors []Collector

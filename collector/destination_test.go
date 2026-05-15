@@ -1,6 +1,26 @@
 package collector
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoadGeoSiteDataUsesConfiguredPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "geosite.dat")
+	want := []byte("fake geosite payload")
+	if err := os.WriteFile(path, want, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := loadGeoSiteData(path)
+	if err != nil {
+		t.Fatalf("loadGeoSiteData(%q) returned error: %v", path, err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("loadGeoSiteData(%q) = %q, want %q", path, got, want)
+	}
+}
 
 func TestGeoSiteMatcherLookupFiltersBroadCodes(t *testing.T) {
 	m := &geoSiteMatcherImpl{
