@@ -43,10 +43,11 @@ type Connections struct {
 }
 
 var (
-	uploadTotal         *prometheus.GaugeVec
-	downloadTotal       *prometheus.GaugeVec
-	activeConnections   *prometheus.GaugeVec
-	networkTrafficTotal *prometheus.CounterVec
+	uploadTotal       *prometheus.GaugeVec
+	downloadTotal     *prometheus.GaugeVec
+	activeConnections *prometheus.GaugeVec
+	policyDownload    *prometheus.CounterVec
+	policyUpload      *prometheus.CounterVec
 )
 
 type Connection struct {
@@ -90,15 +91,9 @@ func (c *Connection) Collect(config CollectConfig) error {
 					Download: 0,
 				}
 			}
-			destination := connection.Metadata.Host
-			if destination == "" {
-				destination = connection.Metadata.DestinationIP
-			}
-			if !config.CollectDest {
-				destination = ""
-			}
-			networkTrafficTotal.WithLabelValues(connection.Metadata.SourceIP, destination, connection.Chains[0], "download").Add(float64(connection.Download) - float64(c.connectionCache[connection.ID].Download))
-			networkTrafficTotal.WithLabelValues(connection.Metadata.SourceIP, destination, connection.Chains[0], "upload").Add(float64(connection.Upload) - float64(c.connectionCache[connection.ID].Upload))
+			policy := connection.Chains[0]
+			policyDownload.WithLabelValues(policy).Add(float64(connection.Download) - float64(c.connectionCache[connection.ID].Download))
+			policyUpload.WithLabelValues(policy).Add(float64(connection.Upload) - float64(c.connectionCache[connection.ID].Upload))
 			c.connectionCache[connection.ID] = connection
 			activeConnectionsMap[connection.ID] = nil
 		}
@@ -137,16 +132,24 @@ func init() {
 		[]string{},
 	)
 
-	networkTrafficTotal = prometheus.NewCounterVec(
+	policyDownload = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "clash",
-			Name:      "network_traffic_bytes_total",
-			Help:      "Total number of bytes downloaded/uploaded, categorized by source, destination, and policy.",
+			Name:      "policy_download_bytes_total",
+			Help:      "Total download bytes by policy",
 		},
-		[]string{"source", "destination", "policy", "type"},
+		[]string{"policy"},
+	)
+	policyUpload = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "clash",
+			Name:      "policy_upload_bytes_total",
+			Help:      "Total upload bytes by policy",
+		},
+		[]string{"policy"},
 	)
 
-	prometheus.MustRegister(uploadTotal, downloadTotal, activeConnections, networkTrafficTotal)
+	prometheus.MustRegister(uploadTotal, downloadTotal, activeConnections, policyDownload, policyUpload)
 
 	c := &Connection{connectionCache: map[string]Connections{}}
 	Register(c)

@@ -3,6 +3,7 @@ module github.com/zxh326/clash-exporter
 go 1.20
 
 require (
+	github.com/metacubex/geo v0.0.0-20240718103914-a4db326ccfd7
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.14.0
 	nhooyr.io/websocket v1.8.7
@@ -17,6 +18,7 @@ require (
 	github.com/prometheus/client_model v0.3.0 // indirect
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
-	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	github.com/sagernet/sing v0.4.2 // indirect
+	golang.org/x/sys v0.21.0 // indirect
+	google.golang.org/protobuf v1.34.2 // indirect
 )
