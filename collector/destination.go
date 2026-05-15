@@ -129,6 +129,74 @@ func lookupGeoSite(host string) string {
 	return m.lookup(host)
 }
 
+var protocolFallbackOrder = []string{"http", "https", "tcp", "tls", "udp", "quic", "grpc", "ws", "wss"}
+
+func protocolFromText(text string) string {
+	text = strings.ToLower(text)
+	if text == "" {
+		return ""
+	}
+	tokens := strings.FieldsFunc(text, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	for _, protocol := range protocolFallbackOrder {
+		for _, token := range tokens {
+			if token == protocol {
+				return protocol
+			}
+		}
+	}
+	return ""
+}
+
+func protocolFromPort(port string) string {
+	switch port {
+	case "80", "8080", "8000", "8888":
+		return "http"
+	case "443", "8443":
+		return "https"
+	case "853":
+		return "tls"
+	}
+	return ""
+}
+
+func protocolFallback(metadata Metadata) string {
+	for _, text := range []string{
+		metadata.Type,
+		metadata.SniffHost,
+		metadata.SpecialProxy,
+		metadata.DNSMode,
+	} {
+		if protocol := protocolFromText(text); protocol != "" {
+			return protocol
+		}
+	}
+	if protocol := protocolFromPort(metadata.DestinationPort); protocol != "" {
+		return protocol
+	}
+	return protocolFromText(metadata.Network)
+}
+
+func destinationLabelForConnection(connection Connections, collectDest bool, matcher *geoSiteMatcherImpl) string {
+	if !collectDest {
+		return ""
+	}
+	destination := connection.Metadata.Host
+	if destination == "" {
+		destination = connection.Metadata.DestinationIP
+	}
+	if destination != "" && matcher != nil {
+		if geosite := matcher.lookup(destination); geosite != "" {
+			return geosite
+		}
+	}
+	if protocol := protocolFallback(connection.Metadata); protocol != "" {
+		return protocol
+	}
+	return destination
+}
+
 type destConnectionMessage struct {
 	DownloadTotal int64         `json:"downloadTotal"`
 	UploadTotal   int64         `json:"uploadTotal"`
@@ -165,6 +233,7 @@ func (d *Destination) Collect(config CollectConfig) error {
 			return errors.Wrap(err, "failed to read JSON message")
 		}
 
+		matcher := getGeoSiteMatcher()
 		activeConnectionsMap := make(map[string]interface{})
 		for _, connection := range m.Connections {
 			if _, ok := d.connectionCache[connection.ID]; !ok {
@@ -173,20 +242,7 @@ func (d *Destination) Collect(config CollectConfig) error {
 					Download: 0,
 				}
 			}
-			destination := connection.Metadata.Host
-			if destination == "" {
-				destination = connection.Metadata.DestinationIP
-			}
-			if !config.CollectDest {
-				destination = ""
-			}
-
-			if destination != "" {
-				geosite := lookupGeoSite(destination)
-				if geosite != "" {
-					destination = geosite
-				}
-			}
+			destination := destinationLabelForConnection(connection, config.CollectDest, matcher)
 
 			destinationDownloadBytesTotal.WithLabelValues(destination).Add(float64(connection.Download) - float64(d.connectionCache[connection.ID].Download))
 			destinationUploadBytesTotal.WithLabelValues(destination).Add(float64(connection.Upload) - float64(d.connectionCache[connection.ID].Upload))

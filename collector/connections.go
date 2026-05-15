@@ -30,6 +30,7 @@ type Metadata struct {
 	DNSMode         string `json:"dnsMode"`
 	ProcessPath     string `json:"processPath"`
 	SpecialProxy    string `json:"specialProxy"`
+	SniffHost       string `json:"sniffHost"`
 }
 type Connections struct {
 	ID          string    `json:"id"`
