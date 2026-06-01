@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/metacubex/geo/encoding/v2raygeo"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestLoadGeoSiteDataUsesConfiguredPath(t *testing.T) {
@@ -19,6 +22,47 @@ func TestLoadGeoSiteDataUsesConfiguredPath(t *testing.T) {
 	}
 	if string(got) != string(want) {
 		t.Fatalf("loadGeoSiteData(%q) = %q, want %q", path, got, want)
+	}
+}
+
+func writeGeoSiteList(t *testing.T, sites []*v2raygeo.GeoSite) string {
+	t.Helper()
+	data, err := proto.Marshal(&v2raygeo.GeoSiteList{Entry: sites})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "geosite.dat")
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestGeoSiteMatcherDemotesGFWWhenSpecificCodeSharesDomain(t *testing.T) {
+	path := writeGeoSiteList(t, []*v2raygeo.GeoSite{
+		{
+			CountryCode: "GOOGLE",
+			Domain:      []*v2raygeo.Domain{{Type: v2raygeo.Domain_Domain, Value: "google.com"}},
+		},
+		{
+			CountryCode: "GFW",
+			Domain:      []*v2raygeo.Domain{{Type: v2raygeo.Domain_Domain, Value: "google.com"}},
+		},
+		{
+			CountryCode: "GFW",
+			Domain:      []*v2raygeo.Domain{{Type: v2raygeo.Domain_Domain, Value: "blocked.example"}},
+		},
+	})
+
+	m := newGeoSiteMatcher(path)
+	if m == nil {
+		t.Fatal("newGeoSiteMatcher returned nil")
+	}
+	if got := m.lookup("calendar.google.com"); got != "google" {
+		t.Fatalf("lookup(calendar.google.com) = %q, want google", got)
+	}
+	if got := m.lookup("www.blocked.example"); got != "gfw" {
+		t.Fatalf("lookup(www.blocked.example) = %q, want gfw", got)
 	}
 }
 

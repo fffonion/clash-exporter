@@ -71,13 +71,24 @@ func newGeoSiteMatcher(geoSitePath string) *geoSiteMatcherImpl {
 		for _, domain := range site.GetDomain() {
 			switch domain.GetType() {
 			case v2raygeo.Domain_Full:
-				m.full[strings.ToLower(domain.GetValue())] = code
+				setGeoSiteCode(m.full, strings.ToLower(domain.GetValue()), code)
 			case v2raygeo.Domain_Domain:
-				m.suffix[strings.ToLower(domain.GetValue())] = code
+				setGeoSiteCode(m.suffix, strings.ToLower(domain.GetValue()), code)
 			}
 		}
 	}
 	return m
+}
+
+func isLowPriorityGeoSite(code string) bool {
+	return strings.EqualFold(code, "GFW")
+}
+
+func setGeoSiteCode(codes map[string]string, key string, candidate string) {
+	if existing, ok := codes[key]; ok && !isLowPriorityGeoSite(existing) && isLowPriorityGeoSite(candidate) {
+		return
+	}
+	codes[key] = candidate
 }
 
 func getGeoSiteMatcher(geoSitePath string) *geoSiteMatcherImpl {
